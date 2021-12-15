@@ -95,6 +95,7 @@ public class GpuSolver extends Solver {
 	private CLKernel kernel;
 	private CLMem ldMem, rdMem, colMem, startjklMem, resMem, progressMem;
 	private final int WORKGROUP_SIZE = 64;
+	private final int WORKGROUP_FILL_MIN = (int) ((1-0.15625) * WORKGROUP_SIZE) + 5; // 22 if WOKRGROUP_SIZE is 32, 49 if it is 64
 	private int globalWorkSize;
 
 	// calculation related stuff
@@ -441,22 +442,38 @@ public class GpuSolver extends Solver {
 			}
 			sortingLists.add(sameStartjklList);
 		}
+		
+		var remainingConstellations = new ArrayList<BoardProperties>();
+		int size, remaining;
 		// now put the lists all together in bpList, thereby filling groups to fit the workgroup size
 		for(var list : sortingLists) {
-			// if the current list size is not divisible by WORKGROUP_SIZE, fill it with pseudo constellations
-			int newSize = list.size();
-			if(newSize % WORKGROUP_SIZE != 0) {
-				newSize = newSize - (newSize % WORKGROUP_SIZE) + WORKGROUP_SIZE;
+			size = list.size();
+			remaining = size % WORKGROUP_SIZE;
+			if(remaining >= WORKGROUP_FILL_MIN) {
+				for(int i = 0; i < WORKGROUP_SIZE - remaining; i++) {
+					list.add(new BoardProperties((1 << N) - 1, (1 << N) - 1, (1 << N) - 1, 69 << 15, 0));
+				}
+			} else if (remaining > 0) {
+				while(list.size() % WORKGROUP_SIZE > 0) {
+					remainingConstellations.add(list.get(list.size() - 1));
+					list.remove(list.size() - 1);
+				}
+//				for(int i = 0; i < WORKGROUP_SIZE - remaining; i++) {
+//					list.add(new BoardProperties((1 << N) - 1, (1 << N) - 1, (1 << N) - 1, 69 << 15, 0));
+//				}
 			}
-			int diff = newSize - list.size();
-			for(int i = 0; i < diff; i++) {
-				list.add(new BoardProperties((1 << N) - 1, (1 << N) - 1, (1 << N) - 1, 69 << 15, 0));
-			}
-			for(BoardProperties bp : list) {
-				bpList.add(bp);
+			bpList.addAll(list);
+		}
+		System.out.println("remainingConstellations.size(): " + remainingConstellations.size());
+		// add the remaining mixed constellations
+		bpList.addAll(remainingConstellations);
+		size = bpList.size();
+		remaining = size % WORKGROUP_SIZE;
+		if(remaining > 0) {
+			for(int i = 0; i < WORKGROUP_SIZE - remaining; i++) {
+				bpList.add(new BoardProperties((1 << N) - 1, (1 << N) - 1, (1 << N) - 1, 69 << 15, 0));
 			}
 		}
-		
 //		for(BoardProperties bp : bpList) {
 //			if(bp.startjkl == 69 << 15) {
 //				System.out.println("ld: " + bp.ld + ", rd: " + bp.rd + ", col: " + bp.col + ", sym: " + bp.sym + "-------- filler");
