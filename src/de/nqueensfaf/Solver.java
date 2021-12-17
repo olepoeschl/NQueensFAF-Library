@@ -1,5 +1,6 @@
 package de.nqueensfaf;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.concurrent.Executors;
@@ -69,7 +70,33 @@ public abstract class Solver {
 	/**
 	 * if true, makes the Solver not calling the onProgressUpdate and onTimeUpdate callbacks
 	 */
-	private boolean updatesEnabled = true;
+	private boolean progressUpdatesEnabled = true;
+	/**
+	 * thread for the {@link #autoSave} function
+	 * @see 
+	 */
+	private Thread autoSaverThread;
+	/**
+	 * if true, the Solver automatically deletes a file created by the auto save function using
+	 * only used when {@link #autoSave} is true
+	 */
+	private boolean autoDeleteEnabled = false;
+	/**
+	 * if true, the Solver automatically calls store() using {@link #autoSaveFilename} if a specific progress percentage step is completed
+	 * @see #autoSavePercentageStep
+	 */
+	private boolean autoSaveEnabled = false;
+	/**
+	 * after the progress increases by this or more percentage, store() is automatically called.
+	 * only used when {@link #autoSave} is true
+	 */
+	private int autoSavePercentageStep = 10;
+	/**
+	 * the filename (format) used for the autosave feature.
+	 * only used when {@link #autoSave} is true
+	 * @see #autoSavePercentageStep
+	 */
+	private String autoSaveFilename = "N{N}.nqf";
 	/**
 	 * for controlflow. Avoids checkForPreparation() being called twice in case solveAsync() is used.
 	 */
@@ -91,14 +118,14 @@ public abstract class Solver {
 	 * @param filename name of the file the progress should be written in (existent or non existent)
 	 * @throws IOException
 	 */
-	public abstract void store(String filepath) throws IOException;
+	protected abstract void store_(String filepath) throws IOException;
 	/**
 	 * Reads the progress of an old run of the {@link Solver} and restores this state so that it can be continued.
 	 * @param filename name of the file the progress was written in
 	 * @throws IOException
 	 * @throws ClassNotFoundException 
 	 */
-	public abstract void restore(String filepath) throws IOException, ClassNotFoundException, ClassCastException;
+	protected abstract void restore_(String filepath) throws IOException, ClassNotFoundException, ClassCastException;
 	/**
 	 * States if the Solver has been restored and therefore contains restored values.
 	 * @return true if restore() was called and the Solver was not started or resetted since, otherwise false
@@ -138,8 +165,9 @@ public abstract class Solver {
 		ucExecutor = (ThreadPoolExecutor) Executors.newFixedThreadPool(2);
 
 		state = NQueensFAF.RUNNING;
-		if(updatesEnabled)
-			startUpdateCallerThreads();
+		startUpdateCallerThreads();
+		if(autoSaveEnabled)
+			startAutoSaverThread();
 		run();
 
 		state = NQueensFAF.TERMINATING;
@@ -221,7 +249,7 @@ public abstract class Solver {
 				onTimeUpdateCallback.onTimeUpdate(getDuration());
 			});
 		}
-		if(onProgressUpdateCallback != null) {
+		if(progressUpdatesEnabled && onProgressUpdateCallback != null) {
 			ucExecutor.submit(() -> {
 				float tmpProgress = 0;
 				long tmpSolutions = 0;
@@ -244,6 +272,44 @@ public abstract class Solver {
 		}
 	}
 
+	/**
+	 * Starts the thread that continously checks if the progress has increased by {@link #autoSavePercentageStep} or more,
+	 * and if yes, calls store() using {@link #autoSaveFilename} the current Solver.
+	 * Only used when {@link #autoSave} is true
+	 * @see #autoSaverThread
+	 */
+	private void startAutoSaverThread() {
+		autoSaverThread = new Thread(() -> {
+			String filename = autoSaveFilename;
+			filename = filename.replaceAll("#N#", ""+ N);
+			if(!filename.endsWith(".faf")) {
+				filename += ".faf";
+			}
+			float tmpProgress = 0;
+			while(isRunning()) {
+				if(getProgress()*100 >= tmpProgress + autoSavePercentageStep) {
+					try {
+						store(filename);
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+					tmpProgress = getProgress();
+				}
+				try {
+					Thread.sleep(300);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+			if(autoDeleteEnabled) {
+				try {
+					new File(filename).delete();
+				} catch(SecurityException e) {}
+			}
+		});
+		autoSaverThread.start();
+	}
+	
 	/**
 	 * Can be used for solving the problem for small N's (board sizes).
 	 * @return the number of solutions
@@ -285,15 +351,42 @@ public abstract class Solver {
 	}
 
 	/**
-	 * Enables or disables progress and time updates.
-	 * @param updatesEnabled if true, enables updates (default value); if false, disables updates.
-	 * @return the {@link Solver}
+	 * Replaces all invalid characters of a String that is supposed to be a filename.
+	 * @param filename name of the file the Solver should store its progress state in
+	 * @return the given filename but without invalid characters reagrding filenames
 	 */
-	public final Solver setUpdatesEnabled(boolean updatesEnabled) {
-		this.updatesEnabled = updatesEnabled;
-		return this;
+	private String getValidFilename(String filename) throws IllegalArgumentException {
+		String newFilename = filename.replace("^\\.+", "").replaceAll("[\\\\/:*?\"<>|]", "");
+		if(newFilename.length() == 0) {
+			throw new IllegalArgumentException("Invalid filename: '" + filename + "'");
+		}
+		return newFilename;
+	}
+	
+	/**
+	 * Wraps store_().
+	 * @param filename name of the file the Solver's progress state should be stored in
+	 * @throws IOException
+	 * @throws IllegalArgumentException
+	 */
+	public void store(String filename) throws IOException, IllegalArgumentException {
+		filename = getValidFilename(filename);
+		store_(filename);
 	}
 
+	/**
+	 * Wraps restore_().
+	 * @param filename name of the file the Solver's progress state should be stored in
+	 * @throws IOException 
+	 * @throws ClassCastException 
+	 * @throws ClassNotFoundException 
+	 * @throws IllegalArgumentException
+	 */
+	public void restore(String filename) throws IOException, ClassNotFoundException, ClassCastException, IllegalArgumentException {
+		filename = getValidFilename(filename);
+		restore_(filename);
+	}
+	
 	/**
 	 * Adds a callback that will be executed on start of the {@link Solver}.
 	 * The callbacks will be called in reversed insertion order.
@@ -434,6 +527,9 @@ public abstract class Solver {
 	public final Solver setTimeUpdateDelay(long timeUpdateDelay) {
 		if(timeUpdateDelay < 0) {
 			throw new IllegalArgumentException("timeUpdateDelay must be a number >= 0");
+		} else if(timeUpdateDelay== 0) {
+			this.timeUpdateDelay = NQueensFAF.DEFAULT_TIME_UPDATE_DELAY;
+			return this;
 		}
 		this.timeUpdateDelay = timeUpdateDelay;
 		return this;
@@ -456,8 +552,104 @@ public abstract class Solver {
 	public final Solver setProgressUpdateDelay(long progressUpdateDelay) {
 		if(progressUpdateDelay < 0) {
 			throw new IllegalArgumentException("progressUpdateDelay must be a number >= 0");
+		} else if(progressUpdateDelay== 0) {
+			this.progressUpdateDelay = NQueensFAF.DEFAULT_PROGRESS_UPDATE_DELAY;
+			return this;
 		}
 		this.progressUpdateDelay = progressUpdateDelay;
+		return this;
+	}
+
+	/**
+	 * Gets {@link #progressUpdatesEnabled}.
+	 * @return {@link #progressUpdatesEnabled}
+	 */
+	public final boolean areProgressUpdatesEnabled() {
+		return progressUpdatesEnabled;
+	}
+	/**
+	 * Enables or disables progress updates.
+	 * Chainable.
+	 * @param progressUpdatesEnabled if true, enables updates (default value); if false, disables updates.
+	 * @return the {@link Solver}
+	 */
+	public final Solver setProgressUpdatesEnabled(boolean progressUpdatesEnabled) {
+		this.progressUpdatesEnabled = progressUpdatesEnabled;
+		return this;
+	}
+
+	/**
+	 * Gets {@link #autoSaveEnabled}.
+	 * @return {@link #autoSaveEnabled}
+	 */
+	public final boolean isAutoSaveEnabled() {
+		return autoSaveEnabled;
+	}
+	/**
+	 * Enables or disables the auto save function.
+	 * Chainable.
+	 * @param autoSaveEnabled if true, enables automatic saving of the current Solver; if false, disables automatic saving (default value).
+	 * @return the {@link Solver}
+	 */
+	public final Solver setAutoSaveEnabled(boolean autoSaveEnabled) {
+		this.autoSaveEnabled = autoSaveEnabled;
+		return this;
+	}
+
+	/**
+	 * Gets {@link #autoDeleteEnabled}.
+	 * @return {@link #autoDeleteEnabled}
+	 */
+	public final boolean isAutoDeleteEnabled() {
+		return autoDeleteEnabled;
+	}
+	/**
+	 * Enables or disables the auto delete function.
+	 * Chainable.
+	 * @param autoDeleteEnabled if true, enables automatic deleting of the files created by the auto save function
+	 * @return the {@link Solver}
+	 */
+	public final Solver setAutoDeleteEnabled(boolean autoDeleteEnabled) {
+		this.autoDeleteEnabled = autoDeleteEnabled;
+		return this;
+	}
+	
+	/**
+	 * Gets {@link #autoSavePercentageStep}.
+	 * @return {@link #autoSavePercentageStep}
+	 */
+	public final int getAutoSavePercentageStep() {
+		return autoSavePercentageStep;
+	}
+	/**
+	 * Sets {@link #autoSavePercentageStep}.
+	 * Chainable.
+	 * @param autoSavePercentageStep
+	 * @return the {@link Solver}
+	 */
+	public final Solver setAutoSavePercentageStep(int autoSavePercentageStep) {
+		if(autoSavePercentageStep <= 0 || autoSavePercentageStep >= 100) {
+			throw new IllegalArgumentException("progressUpdateDelay must be a number between 0 and 100");
+		}
+		this.autoSavePercentageStep = autoSavePercentageStep;
+		return this;
+	}
+	
+	/**
+	 * Gets {@link #autoSaveFilename}.
+	 * @return {@link #autoSaveFilename}
+	 */
+	public final String getAutoSaveFilename() {
+		return autoSaveFilename;
+	}
+	/**
+	 * Sets {@link #autoSaveFilename}.
+	 * Chainable.
+	 * @param autoSaveFilename
+	 * @return the {@link Solver}
+	 */
+	public final Solver setAutoSaveFilename(String autoSaveFilename) {
+		this.autoSaveFilename = autoSaveFilename;
 		return this;
 	}
 

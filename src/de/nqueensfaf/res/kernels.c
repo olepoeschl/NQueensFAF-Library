@@ -61,8 +61,8 @@ __kernel void run(global int *ld_arr, global int *rd_arr, global int *col_mask_a
 	
 	// local (faster) array containing positions of the queens of each row 
 	// for all boards of the workgroup
-	local uint bits[N][BLOCK_SIZE];									// is '1', where a queen will be set; one integer for each line 
-	bits[start][l_id] = temp;							 			// initialize bit as rightmost free space ('0' in notfree)
+	local uint bits[BLOCK_SIZE][N];									// is '1', where a queen will be set; one integer for each line 
+	bits[l_id][start] = temp;							 			// initialize bit as rightmost free space ('0' in notfree)
 	
 	// other variables											
 	uint diff = 1;
@@ -79,7 +79,7 @@ __kernel void run(global int *ld_arr, global int *rd_arr, global int *col_mask_a
 			rd = (rd | temp) >> 1;
 		}
 		else {
-			temp = bits[row][l_id];													// this saves 2 reads from local array
+			temp = bits[l_id][row];													// this saves 2 reads from local array
 			temp *= (row != k && row != l);
 			ld = ((ld >> 1) | (ld_mem << 31)) & ~temp;								// shift diagonals one row up
 			rd = ((rd << 1) | (rd_mem >> 31)) & ~temp;								// if there was a diagonal leaving the board in the line before, occupy it again
@@ -96,7 +96,7 @@ __kernel void run(global int *ld_arr, global int *rd_arr, global int *col_mask_a
 		temp = (row == k || row == l) ? direction : ((notfree + diff) & ~notfree);
 		temp = (row == k && direction) ? L : temp;
 
-		bits[row][l_id] = temp;
+		bits[l_id][row] = temp;
 		
 		// unroll 1 iteration
 		if(row < start)
@@ -110,7 +110,7 @@ __kernel void run(global int *ld_arr, global int *rd_arr, global int *col_mask_a
 			rd = (rd | temp) >> 1;
 		}
 		else {
-			temp = bits[row][l_id];													// this saves 2 reads from local array
+			temp = bits[l_id][row];													// this saves 2 reads from local array
 			temp *= (row != k && row != l);
 			ld = ((ld >> 1) | (ld_mem << 31)) & ~temp;								// shift diagonals one row up
 			rd = ((rd << 1) | (rd_mem >> 31)) & ~temp;								// if there was a diagonal leaving the board in the line before, occupy it again
@@ -127,7 +127,7 @@ __kernel void run(global int *ld_arr, global int *rd_arr, global int *col_mask_a
 		temp = (row == k || row == l) ? direction : ((notfree + diff) & ~notfree);
 		temp = (row == k && direction) ? L : temp;
 
-		bits[row][l_id] = temp;
+		bits[l_id][row] = temp;
 	}
 	result[g_id] = solvecounter;
 	progress[g_id] = 1;

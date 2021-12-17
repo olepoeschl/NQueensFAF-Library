@@ -94,8 +94,8 @@ public class GpuSolver extends Solver {
 	private CLProgram program;
 	private CLKernel kernel;
 	private CLMem ldMem, rdMem, colMem, startjklMem, resMem, progressMem;
-	private final int WORKGROUP_SIZE = 64;
-	private final int WORKGROUP_FILL_MIN = (int) ((1-0.15625) * WORKGROUP_SIZE) + 5; // 22 if WOKRGROUP_SIZE is 32, 49 if it is 64
+	private int WORKGROUP_SIZE = 64;
+	private int WORKGROUP_FILL_MIN = (int) ((1-0.15625) * WORKGROUP_SIZE) + 5; // 22 if WOKRGROUP_SIZE is 32, 49 if it is 64
 	private int globalWorkSize;
 
 	// calculation related stuff
@@ -154,7 +154,7 @@ public class GpuSolver extends Solver {
 	}
 
 	@Override
-	public void store(String filepath) throws IOException {
+	public void store_(String filepath) throws IOException {
 		// if Solver was not even started yet, throw exception
 		if(start == 0 || getProgress() >= 1f) {
 			throw new IllegalStateException("Nothing to be saved");
@@ -194,7 +194,7 @@ public class GpuSolver extends Solver {
 	}
 
 	@Override
-	public void restore(String filepath) throws IOException, ClassNotFoundException, ClassCastException {
+	public void restore_(String filepath) throws IOException, ClassNotFoundException, ClassCastException {
 		if(!isIdle()) {
 			throw new IllegalStateException("Cannot restore while the Solver is running");
 		}
@@ -819,12 +819,32 @@ public class GpuSolver extends Solver {
 		return resultString;
 	}
 
+	// getters and setters
+	
 	// returns the total number of enqueued work-items 
 	public int getGlobalWorkSize() {
 		return globalWorkSize;
 	}
 	
-	// for saving and restoring
+	// gets WORKGROUP_SIZE
+	public int getWorkgroupSize() {
+		return WORKGROUP_SIZE;
+	}
+	
+	// sets WORKGROUP_SIZE
+	public void setWorkgroupSize(int s) {
+		if(device == null) {
+			throw new IllegalStateException("Choose a device first");
+		}
+		int maxWorkgroupSize = device.getInfoInt(CL10.CL_DEVICE_MAX_WORK_GROUP_SIZE);
+		if(s <= 0 || s >= maxWorkgroupSize) {
+			throw new IllegalArgumentException("WorkgroupSize must be between 0 and " + maxWorkgroupSize + " (=max for this device)");
+		}
+		WORKGROUP_SIZE = s;
+		WORKGROUP_FILL_MIN = (int) ((1-0.15625) * WORKGROUP_SIZE) + 5;
+	}
+	
+	// record class for saving and restoring
 	private record RestorationInformation(int N, long duration, long solutions, int startConstCount, 
 			ArrayList<Integer> ldList, ArrayList<Integer> rdList, ArrayList<Integer> colList, ArrayList<Integer> startjklList, ArrayList<Integer> symList) implements Serializable {
 		RestorationInformation(int N, long duration, long solutions, int startConstCount, 
