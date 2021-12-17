@@ -466,7 +466,7 @@ public class GpuSolver extends Solver {
 		}
 		System.out.println("remainingConstellations.size(): " + remainingConstellations.size());
 		// add the remaining mixed constellations
-		bpList.addAll(remainingConstellations);
+//		bpList.addAll(remainingConstellations);
 		size = bpList.size();
 		remaining = size % WORKGROUP_SIZE;
 		if(remaining > 0) {
