@@ -93,9 +93,10 @@ public class GpuSolver extends Solver {
 	private CLCommandQueue xqueue, memqueue;
 	private CLProgram program;
 	private CLKernel kernel;
-	private CLMem ldMem, rdMem, colMem, startjklMem, resMem, progressMem;
+	private CLMem ldMem, rdMem, colMem, startjklMem, mixedMem, resMem, progressMem;
+	private int idxMixed;
 	private int WORKGROUP_SIZE = 64;
-	private int WORKGROUP_FILL_MIN = (int) ((1-0.15625) * WORKGROUP_SIZE) + 5; // 22 if WOKRGROUP_SIZE is 32, 49 if it is 64
+	private int WORKGROUP_FILL_MIN = 50;//(int) ((1-0.15625) * WORKGROUP_SIZE) + 5; // 22 if WOKRGROUP_SIZE is 32, 49 if it is 64
 	private int globalWorkSize;
 
 	// calculation related stuff
@@ -378,6 +379,16 @@ public class GpuSolver extends Solver {
 		}
 		CL10.clEnqueueUnmapMemObject(memqueue, startjklMem, paramPtr, null, null);
 
+		// mixed
+		mixedMem = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | CL10.CL_MEM_ALLOC_HOST_PTR, globalWorkSize*4, errBuf);
+		Util.checkCLError(errBuf.get(0));
+		paramPtr = CL10.clEnqueueMapBuffer(memqueue, mixedMem, CL10.CL_TRUE, CL10.CL_MAP_WRITE, 0, globalWorkSize*4, null, null, errBuf);
+		Util.checkCLError(errBuf.get(0));
+		for(int i = 0; i < globalWorkSize; i++) {
+			paramPtr.putInt(i*4, (i < idxMixed) ? 0 : 1);
+		}
+		CL10.clEnqueueUnmapMemObject(memqueue, mixedMem, paramPtr, null, null);
+		
 		// result memory
 		resMem = CL10.clCreateBuffer(context, CL10.CL_MEM_READ_ONLY | CL10.CL_MEM_ALLOC_HOST_PTR, globalWorkSize*4, errBuf);
 		synchronized(resMem) {
@@ -465,8 +476,10 @@ public class GpuSolver extends Solver {
 			bpList.addAll(list);
 		}
 		System.out.println("remainingConstellations.size(): " + remainingConstellations.size());
+		// store the first index of mixed constellations in idxMixed
+		idxMixed = bpList.size();
 		// add the remaining mixed constellations
-//		bpList.addAll(remainingConstellations);
+		bpList.addAll(remainingConstellations);
 		size = bpList.size();
 		remaining = size % WORKGROUP_SIZE;
 		if(remaining > 0) {
@@ -504,8 +517,9 @@ public class GpuSolver extends Solver {
 		kernel.setArg(1, rdMem);
 		kernel.setArg(2, colMem);
 		kernel.setArg(3, startjklMem);
-		kernel.setArg(4, resMem);
-		kernel.setArg(5, progressMem);
+		kernel.setArg(4, mixedMem);
+		kernel.setArg(5, resMem);
+		kernel.setArg(6, progressMem);
 
 		// create buffer of pointers defining the multi-dimensional size of the number of work units to execute
 		final int dimensions = 1;

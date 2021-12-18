@@ -50,9 +50,9 @@ class SolverTest {
 //			e1.printStackTrace();
 //		}
 		GpuSolver s = new GpuSolver();
-		s.setDevice(0);
+		s.setDevice(1);
 		s.setProgressUpdatesEnabled(false);
-		s.setN(17);
+		s.setN(18);
 		new Thread(() -> {
 			while(true) {
 				if(s.getGlobalWorkSize() == 0) {

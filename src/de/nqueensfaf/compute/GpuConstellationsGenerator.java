@@ -107,7 +107,6 @@ class GpuConstellationsGenerator {
 				}
 			}
 		}
-		sortConstellations();
 		startConstCount = ldList.size();
 		startjklList = new ArrayList<Integer>(startConstCount);
 		for(int i = 0; i < startConstCount; i++) {
@@ -152,69 +151,6 @@ class GpuConstellationsGenerator {
 				free -= bit;
 				sq5((ld|bit) << 1, (rd|bit) >>> 1, col|bit, k, l, row+1, queens+1);
 			}
-		}
-	}
-
-	// sort constellations so that as many workgroups as possible have solutions with less divergent branches
-	void sortConstellations() {
-		record BoardProperties(int ld, int rd, int col, int start, int jkl, int sym) {
-			BoardProperties(int ld, int rd, int col, int start, int jkl, int sym) {
-				this.ld = ld;
-				this.rd = rd;
-				this.col = col;
-				this.start = start;
-				this.jkl = jkl;
-				this.sym = sym;
-			}
-		}
-
-		int len = ldList.size();
-		ArrayList<BoardProperties> list = new ArrayList<BoardProperties>(len);
-		for(int i = 0; i < len; i++) {
-			list.add(new BoardProperties(ldList.get(i), rdList.get(i), colList.get(i), startList.get(i), jklList.get(i), symList.get(i)));
-		}
-		Collections.sort(list, new Comparator<BoardProperties>() {
-			@Override
-			public int compare(BoardProperties o1, BoardProperties o2) {
-				int j1 = o1.jkl >> 10, j2 = o2.jkl >> 10;
-				int k1 = (o1.jkl >> 5) & 0b00011111, k2 = (o2.jkl >> 5) & 0b00011111;
-				int l1 = o1.jkl & 0b00011111, l2 = o2.jkl & 0b00011111;
-				if(j1 > j2) {
-					return 1;
-				} else if(j1 < j2) {
-					return -1;
-				} else {
-					if(k1 > k2) {
-						return 1;
-					} else if(k1 < k2) {
-						return -1;
-					} else {
-						if(l1 > l2) {
-							return 1;
-						} else if(l1 < l2) {
-							return -1;
-						} else {
-							return 0;
-						}
-					}
-				}
-			}
-		});
-		ldList.clear();
-		rdList.clear();
-		colList.clear();
-		startList.clear();
-		jklList.clear();
-		symList.clear();
-		for(int i = 0; i < len; i++) {
-			ldList.add(list.get(i).ld);
-			rdList.add(list.get(i).rd);
-			colList.add(list.get(i).col);
-			startList.add(list.get(i).start);
-			jklList.add(list.get(i).jkl);
-			symList.add(list.get(i).sym);
-//			//---
-//			System.out.println(list.get(i).jkl);
 		}
 	}
 
