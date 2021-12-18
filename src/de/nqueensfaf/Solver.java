@@ -115,13 +115,13 @@ public abstract class Solver {
 	protected abstract void run();
 	/**
 	 * Saves the current progress of the {@link Solver} in a file so that it can be continued at some time later.
-	 * @param filename name of the file the progress should be written in (existent or non existent)
+	 * @param filepath path/name of the file the progress should be written in (existent or non existent)
 	 * @throws IOException
 	 */
 	protected abstract void store_(String filepath) throws IOException;
 	/**
 	 * Reads the progress of an old run of the {@link Solver} and restores this state so that it can be continued.
-	 * @param filename name of the file the progress was written in
+	 * @param filepath path/name of the file the progress was written in
 	 * @throws IOException
 	 * @throws ClassNotFoundException 
 	 */
@@ -289,7 +289,7 @@ public abstract class Solver {
 			while(isRunning()) {
 				if(getProgress()*100 >= tmpProgress + autoSavePercentageStep) {
 					try {
-						store(filename);
+						store(filename, false);
 					} catch (IOException e) {
 						e.printStackTrace();
 					}
@@ -364,27 +364,28 @@ public abstract class Solver {
 	}
 	
 	/**
-	 * Wraps store_().
-	 * @param filename name of the file the Solver's progress state should be stored in
+	 * Wraps {@link #store_(String)}.
+	 * @param filepath path/name of the file the Solver's progress state should be stored in
+	 * @param bypassValidityCheck if true, does not check if the given filename is valid; should be true for absolute paths and false for filenames
 	 * @throws IOException
 	 * @throws IllegalArgumentException
 	 */
-	public void store(String filename) throws IOException, IllegalArgumentException {
-		filename = getValidFilename(filename);
-		store_(filename);
+	public void store(String filepath, boolean bypassValidityCheck) throws IOException, IllegalArgumentException {
+		if(!bypassValidityCheck)
+			filepath = getValidFilename(filepath);
+		store_(filepath);
 	}
 
 	/**
-	 * Wraps restore_().
-	 * @param filename name of the file the Solver's progress state should be stored in
+	 * Wraps {@link #restore_(String)}.
+	 * @param filepath path/name of the file the Solver's progress state should be restored from
 	 * @throws IOException 
 	 * @throws ClassCastException 
 	 * @throws ClassNotFoundException 
 	 * @throws IllegalArgumentException
 	 */
-	public void restore(String filename) throws IOException, ClassNotFoundException, ClassCastException, IllegalArgumentException {
-		filename = getValidFilename(filename);
-		restore_(filename);
+	public void restore(String filepath) throws IOException, ClassNotFoundException, ClassCastException, IllegalArgumentException {
+		restore_(filepath);
 	}
 	
 	/**
