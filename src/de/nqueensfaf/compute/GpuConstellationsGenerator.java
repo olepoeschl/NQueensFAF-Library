@@ -120,6 +120,10 @@ class GpuConstellationsGenerator {
 
 	// presolver
 	private void sq5(int ld, int rd, int col, int k, int l, int row, int queens) {
+		if(row == k || row == l) {
+			sq5(ld<<1, rd>>>1, col, k, l, row+1, queens);
+			return;
+		}
 		if(queens == 5) {
 			ld &= ~(kbit << row);
 			rd &= ~(lbit >>> row);
@@ -137,10 +141,6 @@ class GpuConstellationsGenerator {
 			colList.add(col);
 			startList.add(row);
 			counter++;
-			return;
-		}
-		if(row == k || row == l) {
-			sq5(ld<<1, rd>>>1, col, k, l, row+1, queens);
 			return;
 		}
 		else {

@@ -51,10 +51,6 @@ __kernel void run(global int *ld_arr, global int *rd_arr, global int *col_mask_a
 	
 	// init klguard
 	uint notfree = ld | rd | col_mask | jklqueens[row];
-	if(row == k)
-		notfree = ~L;
-	else if (row == l)
-		notfree = ~1U;
 	
 	// temp variable
 	uint temp = (notfree + 1) & ~notfree;		// for reducing array reads
@@ -65,46 +61,57 @@ __kernel void run(global int *ld_arr, global int *rd_arr, global int *col_mask_a
 	bits[l_id][start] = temp;							 			// initialize bit as rightmost free space ('0' in notfree)
 	
 	// other variables											
-	uint diff = 1;
-	int direction = 1;
+	uint old_queen = 1;
 	
 	// iterative loop representing the recursive setqueen-function
 	while(row >= start) {
 		if(temp) {																	// if bit is on board
+			row++;
+			
 			col_mask |= temp;															// new col
 			ld_mem = ld_mem << 1 | ld >> 31;
 			rd_mem = rd_mem >> 1 | rd << 31;
 			ld = (ld | temp) << 1;													// shift diagonals to next line
-			rd = (rd | temp) >> 1;													
-				
-			row++;
-			diff = direction = 1;
+			rd = (rd | temp) >> 1;	
+			
+			old_queen = 1;
+			
+			while(row == k || row == l){
+				ld_mem = ld_mem << 1 | ld >> 31;
+				rd_mem = rd_mem >> 1 | rd << 31;
+				ld <<= 1;
+				rd >>= 1;
+				row++;
+			}
 		}
 		else {
-			row--;																	// one row back
-			temp = bits[l_id][row];													// this saves 2 reads from local array
-			temp *= (row != k && row != l);
+			row--;
+			while(row == k || row == l){
+				ld = ((ld >> 1) | (ld_mem << 31));
+				rd = ((rd << 1) | (rd_mem >> 31));
+				ld_mem >>= 1;
+				rd_mem <<= 1;
+				row--;
+			}
+			temp = bits[l_id][row]; 												// this saves 2 reads from local array
 			ld = ((ld >> 1) | (ld_mem << 31)) & ~temp;								// shift diagonals one row up
 			rd = ((rd << 1) | (rd_mem >> 31)) & ~temp;								// if there was a diagonal leaving the board in the line before, occupy it again
 			ld_mem >>= 1;															// shift those as well
 			rd_mem <<= 1;
 			
-			direction = 0;
-			diff = temp;
+			old_queen = temp;
 		}
 		solvecounter += (row == N-1);
 		
 		notfree = jklqueens[row] | ld | rd | col_mask;							// calculate occupancy of next row
-		if(!direction)
+		if(old_queen != 1)
 			col_mask &= ~temp;
 		
-		temp = (notfree + diff) & ~notfree;
-		if(row == k)
-			temp = L * direction;
-		if(row == l)
-			temp = direction;
-			
-		bits[l_id][row] = temp;
+		// calculate next queen bit
+		temp = (notfree + old_queen) & ~notfree;
+		
+		if(temp != 0)
+			bits[l_id][row] = temp;
 	}
 	result[g_id] = solvecounter;
 	progress[g_id] = 1;
